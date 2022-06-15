@@ -1,0 +1,20 @@
+.*
+__pycache__/
+*.pyc
+params/*
+prompts/*
+petition/*
+completions/*
+
+# ignore the log files when generated
+*.log
+__pycache__
+
+# don't ignore the .gitignore or the env template
+!.gitignore
+!.env.template
+
+# don't ignore our samples
+!params/Example*.*
+!prompts/Example*.*
+!petition/Example*.*
