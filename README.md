@@ -79,10 +79,10 @@ Prompt(name='MyFirstPrompt', text='Describe the color of of the sky in flowery l
 ### 3. Create a _Petition_ to use
 Petitions just combine params and prompts into a reusable form since they often pair together. 
 ```bash
-> python3 cli.py pet create MyFirstPetition MyFirstPrompt MyFirstParams
+> python3 cli.py pet create MyFirstPetition MyFirstPrompt MyFirstEngine
 ```
 ```
-Created Petition MyFirstPetition, Petition(name='MyFirstPetition', prompt_name='MyFirstPrompt', params_name='MyFirstParams', promptvars_name=None)
+Created Petition MyFirstPetition, Petition(name='MyFirstPetition', prompt_name='MyFirstPrompt', params_name='MyFirstEngine', promptvars_name=None)
 ```
 
 ### 4. Get a completion output!

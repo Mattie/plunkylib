@@ -1,5 +1,4 @@
 text|str
-Describe the color of of the sky in flowery language.
+Describe the color of the sky in flowery language:
 ----
-
 #-=-=-=-=-DO-NOT-EDIT-THIS-LINE-PLEASE-=-=-=-=-#
