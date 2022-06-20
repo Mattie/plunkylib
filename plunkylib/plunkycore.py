@@ -110,18 +110,18 @@ formats.register('.txt', TxtFormat)
 # (6) NamedList, a list of named items, used for storing things like random lists you might want to expand inside a prompt
 
 
-@datafile("prompts/{self.name}.txt")
+@datafile("./prompts/{self.name}.txt")
 class Prompt:
     name: str
     text: str
 
-@datafile("promptvars/{self.name}.yml")
+@datafile("./promptvars/{self.name}.yml")
 class PromptVars:
     name: str
     # need a dictionary
     vars: Dict[str, str]
 
-@datafile("params/{self.name}.yml", defaults=True)
+@datafile("./params/{self.name}.yml", defaults=True)
 class CompletionParams:
     name: str
     engine: str = "text-davinci-002"
@@ -134,7 +134,7 @@ class CompletionParams:
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
 
-@datafile("petition/{self.name}.yml")
+@datafile("./petition/{self.name}.yml")
 class Petition:
     name: str
     prompt_name: str
@@ -155,7 +155,7 @@ class Petition:
         else:
             self.promptvars = None
 
-@datafile("completions/{self.name}.yml")
+@datafile("./completions/{self.name}.yml")
 class Completion:
     name: str
     text: str
@@ -171,7 +171,7 @@ class Completion:
        self.petition = Petition(self.petition_name, Missing, Missing) if self.petition_name is not Missing else None
        self.parent = Completion(self.parent_name, Missing, Missing) if self.parent_name is not Missing else None
 
-@datafile("namedlists/{self.list_name}.yml")
+@datafile("./namedlists/{self.list_name}.yml")
 class NamedList:
     list_name: str
     items: List[str]
