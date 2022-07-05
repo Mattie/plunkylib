@@ -13,7 +13,7 @@ _TODO: Add to pip_
 ### Requirements
 
 ```bash
-pip3 install chronological
+pip3 install openai loguru python-dotenv
 pip3 install nest_asyncio
 pip3 install questionary
 pip3 install datafiles

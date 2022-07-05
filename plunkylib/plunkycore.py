@@ -2,7 +2,7 @@
 import nest_asyncio
 nest_asyncio.apply()
 from datetime import datetime
-from chronological import cleaned_completion
+from .aiwrapper import cleaned_completion_wrapper, content_classification
 from dataclasses import dataclass, field
 from typing import IO, ClassVar, List, Dict, Optional, Tuple
 from asyncio import run as aiorun
@@ -11,8 +11,6 @@ from datafiles import Missing
 from pydoc import locate
 import questionary
 import random
-
-# Chronological helps us talk to OpenAI's GPT-3 model with a little extra text cleaning
 
 # constants for no (0.0), low (0.4), normal (0.7), high (0.9), and max (1.0) temperature:
 @dataclass
@@ -133,6 +131,7 @@ class CompletionParams:
     top_p: float = 1.0
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
+    logprobs: Optional[int] = None
 
 @datafile("./petition/{self.name}.yml")
 class Petition:
@@ -165,6 +164,7 @@ class Completion:
     post_prompt_text: Optional[str] = None
     rendered_prompt_text: Optional[str] = None
     prompt_shot: Optional[str] = None
+    content_filter_rating: Optional[int] = None
 
     # post init to initialize the prompt and params
     def load_all(self):
@@ -178,7 +178,7 @@ class NamedList:
 
 # support for a simple line completion with davinci
 async def simple_completion(prompt) -> str:
-    response = await cleaned_completion(
+    response = await cleaned_completion_wrapper(
         prompt,
         engine="davinci",
         max_tokens=45,
@@ -189,7 +189,7 @@ async def simple_completion(prompt) -> str:
 
 # support for a a line completion with normal temperature
 async def normal_completion(prompt) -> str:
-    response = await cleaned_completion(
+    response = await cleaned_completion_wrapper(
         prompt,
         engine="davinci",
         max_tokens=45,
@@ -201,8 +201,8 @@ async def normal_completion(prompt) -> str:
 async def petition_completion(petition: Petition) -> str:
     prompt = petition.prompt.text
     params = petition.params
-    # call cleaned_completion with the params
-    response = await cleaned_completion(
+    # call cleaned_completion_wrapper with the params
+    response = await cleaned_completion_wrapper(
         prompt,
         engine=params.engine,
                 n=params.n,
@@ -213,6 +213,7 @@ async def petition_completion(petition: Petition) -> str:
         top_p=params.top_p,
         frequency_penalty=params.frequency_penalty,
         presence_penalty=params.presence_penalty,
+        logprobs=params.logprobs,
     )
     return response
 
@@ -304,64 +305,8 @@ def _trimmed_fetch_response(resp, n):
             texts.append(resp.json()['completions'][idx]['data']['text'].strip())
         return texts
 
-# attempt at making an ai21 jurassic query that mimics the chronological/gpt3 query
-async def jurassic_cleaned_completion(prompt, engine="j1-grande", max_tokens=64, temperature=0.7, top_p=1, stop=None, presence_penalty=0, frequency_penalty=0, echo=False, n=1, stream=False, logprobs=None, best_of=1, logit_bias={}, count_penalty=0):
-    import requests
-    import os
-    apikey = os.getenv("AI21_API_KEY")
-    resp = requests.post("https://api.ai21.com/studio/v1/" + engine + "/complete",
-    headers={"Authorization": "Bearer " + apikey},
-    json={
-        "prompt": prompt,
-        "numResults": n,
-        "maxTokens": max_tokens,
-        "temperature": temperature,
-        "topKReturn": 0,
-        "topP":top_p,
-        "stopSequences":stop,
-        "countPenalty": {
-                "scale": count_penalty,
-                "applyToNumbers": False,
-                "applyToPunctuations": False,
-                "applyToStopwords": False,
-                "applyToWhitespaces": False,
-                "applyToEmojis": True
-            },
-            "frequencyPenalty": {
-                "scale": frequency_penalty,
-                "applyToNumbers": False,
-                "applyToPunctuations": False,
-                "applyToStopwords": False,
-                "applyToWhitespaces": False,
-                "applyToEmojis": True
-            },
-            "presencePenalty": {
-                "scale": presence_penalty,
-                "applyToNumbers": False,
-                "applyToPunctuations": False,
-                "applyToStopwords": False,
-                "applyToWhitespaces": False,
-                "applyToEmojis": True
-            },
-        })
-    if resp.status_code != 200:
-        return False
-    return _trimmed_fetch_response(resp, n)
-
-# method that takes any number of keyword arguments to wrap cleaned_completion, but don't list the named arguments
-async def cleaned_completion_wrapper(*args, **kwargs):
-    # if the keyword argument "engine" was included
-    if "engine" in kwargs:
-        # if engine begins with "j1" use the jurassic_cleaned_completion method
-        if kwargs["engine"].startswith("j1"):
-            return await jurassic_cleaned_completion(*args, **kwargs)
-        # otherwise use the cleaned_completion method
-        else:
-            return await cleaned_completion(*args, **kwargs)
-
-
 # this returns a Completion object and the string prompt
-async def petition_completion2(petition: Petition, additional: Optional[dict] = None) -> Tuple[Completion, str]:
+async def petition_completion2(petition: Petition, additional: Optional[dict] = None, content_filter_check: bool = False, user: str = None) -> Tuple[Completion, str]:
     petition.load_all()
     # remove the prompt_break symbols from the prompt by default
     prompt = petition.prompt.text
@@ -406,7 +351,7 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
     with open("last_prompt.log", "w") as f:
         f.write(prompt)
 
-    # call cleaned_completion with the params
+    # call cleaned_completion_wrapper with the params
     response = await cleaned_completion_wrapper(
         prompt=prompt,
         engine=params.engine,
@@ -418,6 +363,7 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
         top_p=params.top_p,
         frequency_penalty=params.frequency_penalty,
         presence_penalty=params.presence_penalty,
+        logprobs=params.logprobs,
     )
     # get the current seconds since the epoch from datetime.time
     seconds = int(datetime.now().timestamp())    
@@ -426,9 +372,18 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
     completion.post_prompt_text = prompt_break
     completion.rendered_prompt_text = prompt
     completion.prompt_shot = prompt_shot
+
+    # if the content_filter_check is 2, then we need to check if the completion is allowed
+    if content_filter_check:
+        level = await content_classification(prompt + response + prompt_break)
+        completion.content_filter_rating = int(level)
+
     # store the last prompt in a file called last_prompt.log
     with open("last_response.log", "w") as f:
         f.write(response + prompt_break)
+        if content_filter_check:
+            f.write(f"\nContent filter rating: {level}")
+
 
     return completion, prompt_break
 
