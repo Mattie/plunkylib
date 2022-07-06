@@ -41,7 +41,9 @@ async def set_api_key(api_key):
     openai.api_key = api_key
 
 # oai
-async def _completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_p=1, stop=None, presence_penalty=0, frequency_penalty=0, echo=False, n=1, stream=False, logprobs=None, best_of=1, logit_bias={}):
+async def _completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_p=1, stop=None, presence_penalty=0, frequency_penalty=0, echo=False, n=1, stream=False, logprobs=None, best_of=1, logit_bias={}, user=None):
+    if user is None:
+        user = "_not_set"
     logger.debug("""CONFIG:
     Prompt: {0}
     Temperature: {1}
@@ -56,8 +58,8 @@ async def _completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_
     Stream: {10}
     Log-Probs: {11}
     Best Of: {12}
-    Logit Bias: {13}"""
-                 .format(repr(prompt), temperature, engine, max_tokens, top_p, stop, presence_penalty, frequency_penalty, echo, n, stream, logprobs, best_of, logit_bias))
+    Logit Bias: {13}
+    User: {14}""".format(prompt, temperature, engine, max_tokens, top_p, stop, presence_penalty, frequency_penalty, echo, n, stream, logprobs, best_of, logit_bias, user))
     response = openai.Completion.create(engine=engine,
                                         prompt=prompt,
                                         max_tokens=max_tokens,
@@ -71,7 +73,8 @@ async def _completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_
                                         stream=stream,
                                         logprobs=logprobs,
                                         best_of=best_of,
-                                        logit_bias=logit_bias)
+                                        logit_bias=logit_bias,
+                                        user=user)
     logger.debug("GPT-3 Completion Result: {0}".format(response))
     return response
 
@@ -136,7 +139,7 @@ async def gather(*args):
 
 # Wrappers
 
-async def cleaned_completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_p=1, stop=None, presence_penalty=0, frequency_penalty=0, echo=False, n=1, stream=False, logprobs=None, best_of=1, logit_bias={}):
+async def cleaned_completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_p=1, stop=None, presence_penalty=0, frequency_penalty=0, echo=False, n=1, stream=False, logprobs=None, best_of=1, logit_bias={}, user=None):
     '''
     Wrapper for OpenAI API completion. Returns whitespace trimmed result from GPT-3.
     '''
@@ -153,7 +156,8 @@ async def cleaned_completion(prompt, engine="ada", max_tokens=64, temperature=0.
                              stream=stream,
                              logprobs=logprobs,
                              best_of=best_of,
-                             logit_bias=logit_bias)
+                             logit_bias=logit_bias,
+                             user=user)
     return _trimmed_fetch_response(resp, n)
 
 
@@ -240,6 +244,9 @@ async def cleaned_completion_wrapper(*args, **kwargs):
     if "engine" in kwargs:
         # if engine begins with "j1" use the jurassic_cleaned_completion method
         if kwargs["engine"].startswith("j1"):
+            # jurassic doesn't support the user params so let us remove it
+            if "user" in kwargs:
+                del kwargs["user"]
             return await jurassic_cleaned_completion(*args, **kwargs)
         # otherwise use the cleaned_completion method
         else:

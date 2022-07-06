@@ -165,6 +165,7 @@ class Completion:
     rendered_prompt_text: Optional[str] = None
     prompt_shot: Optional[str] = None
     content_filter_rating: Optional[int] = None
+    user_identifier: Optional[str] = None
 
     # post init to initialize the prompt and params
     def load_all(self):
@@ -364,6 +365,7 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
         frequency_penalty=params.frequency_penalty,
         presence_penalty=params.presence_penalty,
         logprobs=params.logprobs,
+        user=user,
     )
     # get the current seconds since the epoch from datetime.time
     seconds = int(datetime.now().timestamp())    
@@ -373,14 +375,20 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
     completion.rendered_prompt_text = prompt
     completion.prompt_shot = prompt_shot
 
+    if user:
+        completion.user_identifier = user
+
     # if the content_filter_check is 2, then we need to check if the completion is allowed
     if content_filter_check:
         level = await content_classification(prompt + response + prompt_break)
         completion.content_filter_rating = int(level)
+    
 
     # store the last prompt in a file called last_prompt.log
     with open("last_response.log", "w") as f:
         f.write(response + prompt_break)
+        if user:
+            f.write(f"\nUser: {user}")
         if content_filter_check:
             f.write(f"\nContent filter rating: {level}")
 
