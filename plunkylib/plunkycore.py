@@ -380,7 +380,11 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
 
     # if the content_filter_check is 2, then we need to check if the completion is allowed
     if content_filter_check:
-        level = await content_classification(prompt + response + prompt_break)
+        try:
+            level = await content_classification(prompt + response + prompt_break)
+        except Exception as e:
+            print(f"Error: {e}")
+            level = "-1"
         completion.content_filter_rating = int(level)
     
 
