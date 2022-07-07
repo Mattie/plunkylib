@@ -256,6 +256,9 @@ async def content_classification(content_to_classify):
     """ Uses OpenAI's content filter API to classify content as suitable for viewing. 2 = bad/filtered, 1 = sensitive, 0 = good/unfiltered. 
         See https://beta.openai.com/docs/models/content-filter
     """
+    if len(content_to_classify) > 1500:
+        # truncate to the last 1500 characters
+        content_to_classify = content_to_classify[-1500:]
     # async def cleaned_completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_p=1, stop=None, presence_penalty=0, frequency_penalty=0, echo=False, n=1, stream=False, logprobs=None, best_of=1, logit_bias={}):    
     prompt = "<|endoftext|>"+content_to_classify+"\n--\nLabel:"
     response = await _completion(prompt, engine="content-filter-alpha", max_tokens=1, temperature=0, top_p=0, logprobs=10)
