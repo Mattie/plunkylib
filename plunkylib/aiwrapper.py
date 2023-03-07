@@ -28,6 +28,7 @@ import time
 import asyncio
 import openai
 import os
+import json
 from pathlib import Path
 from loguru import logger
 from dotenv import load_dotenv
@@ -78,6 +79,44 @@ async def _completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_
     logger.debug("GPT-3 Completion Result: {0}".format(response))
     return response
 
+# oai
+async def _chatcompletion(prompt, engine="gpt-3.5-turbo", max_tokens=64, temperature=0.7, top_p=1, stop=None, presence_penalty=0, frequency_penalty=0, n=1, stream=False, logit_bias={}, user=None):
+    if user is None:
+        user = "_not_set"
+    # prompt will be in JSON format, let us translate it to a python list
+    # if the prompt is a list already, we will just use it as is
+    if isinstance(prompt, list):
+        messages = prompt
+    else:
+        messages = json.loads(prompt)
+    logger.debug("""CONFIG:
+    Prompt: {0}
+    Temperature: {1}
+    Model: {2}
+    Max Tokens: {3}
+    Top-P: {4}
+    Stop: {5}
+    Presence Penalty {6}
+    Frequency Penalty: {7}
+    N: {8}
+    Stream: {9}
+    Logit Bias: {10}
+    User: {11}""".format(prompt, temperature, engine, max_tokens, top_p, stop, presence_penalty, frequency_penalty, n, stream, logit_bias, user))
+    response = openai.ChatCompletion.create(model=engine,
+                                        messages=messages,
+                                        max_tokens=max_tokens,
+                                        temperature=temperature,
+                                        top_p=top_p,
+                                        presence_penalty=presence_penalty,
+                                        frequency_penalty=frequency_penalty,
+                                        stop=stop,
+                                        n=n,
+                                        stream=stream,
+                                        logit_bias=logit_bias,
+                                        user=user)
+    logger.debug("GPT-3 Completion Result: {0}".format(response))
+    return response
+
 def _fetch_response(resp, n):
     if n == 1:
         return resp.choices[0].text
@@ -96,6 +135,17 @@ def _trimmed_fetch_response(resp, n):
         texts = []
         for idx in range(0, n):
             texts.append(resp.choices[idx].text.strip())
+        return texts
+
+def _trimmed_fetch_chat_response(resp, n):
+    if n == 1:
+        #response[‘choices’][0][‘message’][‘content’]
+        return resp.choices[0].message.content.strip()
+    else:
+        logger.debug('_trimmed_fetch_response :: returning {0} responses from ChatGPT3'.format(n))
+        texts = []
+        for idx in range(0, n):
+            texts.append(resp.choices[idx].message.content.strip())
         return texts
 
 def prepend_prompt(new_stuff, prompt):
@@ -181,6 +231,25 @@ async def raw_completion(prompt, engine="ada", max_tokens=64, temperature=0.7, t
                              logit_bias=logit_bias)
     return _fetch_response(resp, n)
 
+# ChatGPT3
+async def cleaned_chat_completion(prompt, engine="gpt-3.5-turbo", max_tokens=64, temperature=0.7, top_p=1, stop=None, presence_penalty=0, frequency_penalty=0, n=1, stream=False, logprobs=None, logit_bias={}, user=None):
+    '''
+    Wrapper for OpenAI API chat completion. Returns whitespace trimmed result from ChatGPT3.
+    '''
+    resp = await _chatcompletion(prompt,
+                             engine=engine,
+                             max_tokens=max_tokens,
+                             temperature=temperature,
+                             top_p=top_p,
+                             presence_penalty=presence_penalty,
+                             frequency_penalty=frequency_penalty,
+                             stop=stop,
+                             n=n,
+                             stream=stream,
+                             logit_bias=logit_bias,
+                             user=user)
+    return _trimmed_fetch_chat_response(resp, n)
+
 # Jurassic
 
 def _j_trimmed_fetch_response(resp, n):
@@ -248,6 +317,10 @@ async def cleaned_completion_wrapper(*args, **kwargs):
             if "user" in kwargs:
                 del kwargs["user"]
             return await jurassic_cleaned_completion(*args, **kwargs)
+        elif kwargs["engine"].startswith("gpt-"):
+            if "best_of" in kwargs:
+                del kwargs["best_of"]
+            return await cleaned_chat_completion(*args, **kwargs)
         # otherwise use the cleaned_completion method
         else:
             return await cleaned_completion(*args, **kwargs)
