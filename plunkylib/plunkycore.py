@@ -11,6 +11,7 @@ from datafiles import Missing
 from pydoc import locate
 import questionary
 import random
+import json
 
 # constants for no (0.0), low (0.4), normal (0.7), high (0.9), and max (1.0) temperature:
 @dataclass
@@ -51,6 +52,8 @@ class TxtFormat(formats.Formatter):
     def deserialize(cls, file_object: IO) -> Dict:
         # reverse the serialize method
         output = {}
+        # use an UTF-8 encoding for the file
+        file_object = open(file_object.name, 'r', encoding='utf-8')
         # read each line of the file_object
         lines = file_object.readlines()
         # loop through the range of lines
@@ -119,6 +122,31 @@ class PromptVars:
     # need a dictionary
     vars: Dict[str, str]
 
+@datafile("./prompts/{self.chatprompt_name}.yml")
+class ChatPrompt:
+    chatprompt_name: str
+    messages: List[Dict[str, str]]
+
+    def add_message(self, role: str, content: str):
+        self.messages.append({role: content})
+    def get_json(self) -> str:
+        new_messages = []
+        for message in self.messages:
+            for role, content in message.items():
+                new_messages.append({"role": role, "content": content})
+        return json.dumps(new_messages)
+    def format(self, **kwargs) -> str:
+        formatted_messages = []
+        # loop through all the messages and format each dictionary value
+        for message in self.messages:
+            for role, content in message.items():
+                formatted_messages.append({"role": role, "content": content.format(**kwargs)})
+        # return json version of the messages
+        return json.dumps(formatted_messages)
+        
+
+
+
 @datafile("./params/{self.name}.yml", defaults=True)
 class CompletionParams:
     name: str
@@ -136,21 +164,28 @@ class CompletionParams:
 @datafile("./petition/{self.name}.yml")
 class Petition:
     name: str
-    prompt_name: str
     params_name: str
+    prompt_name: Optional[str]  = None
+    chatprompt_name: Optional[str] = None
     promptvars_name: Optional[str] = None
     prompt: ClassVar[Prompt]
+    chatprompt: ClassVar[ChatPrompt]
     params: ClassVar[CompletionParams]
     promptvars: ClassVar[PromptVars]
     # post init to initialize the prompt and params
     def load_all(self):
         # default to the prompt of the same name
-        if self.prompt_name == "":
+        if (self.prompt_name is None or self.prompt_name == "") and self.chatprompt_name is None:
             self.prompt_name = self.name
-        self.prompt = Prompt(self.prompt_name, Missing)
-        self.params = CompletionParams(self.params_name)
+        if self.chatprompt_name is not None:
+            self.chatprompt = ChatPrompt.objects.get(self.chatprompt_name)
+            self.prompt = None
+        else:
+            self.prompt = Prompt.objects.get(self.prompt_name)
+            self.chatprompt = None
+        self.params = CompletionParams.objects.get(self.params_name)
         if self.promptvars_name is not None:
-            self.promptvars = PromptVars(self.promptvars_name, Missing)
+            self.promptvars = PromptVars.objects.get(self.promptvars_name)
         else:
             self.promptvars = None
 
@@ -169,8 +204,12 @@ class Completion:
 
     # post init to initialize the prompt and params
     def load_all(self):
-       self.petition = Petition(self.petition_name, Missing, Missing) if self.petition_name is not Missing else None
-       self.parent = Completion(self.parent_name, Missing, Missing) if self.parent_name is not Missing else None
+       self.petition = Petition.objects.get(self.petition_name) if self.petition_name is not Missing else None
+       self.parent = Completion.objects.get(self.parent_name) if self.parent_name is not Missing else None
+
+
+
+        
 
 @datafile("./namedlists/{self.list_name}.yml")
 class NamedList:
@@ -220,14 +259,14 @@ async def petition_completion(petition: Petition) -> str:
 
 # accepts a petition name as a string and calls petition_completion2, returning only the completion text
 async def petition_name_completion(petition_name: str, additional: Optional[dict] = None) -> str:
-    petition = Petition(petition_name, Missing, Missing)
+    petition = Petition.objects.get(petition_name)
     completion, prompt1 = await petition_completion2(petition, additional)
     return prompt1 + completion.text
 
 class PromptGetter:
     """Used for variable expansion of prompt text inside other prompts"""
     def __getitem__(self, k):
-        prompt = Prompt(k, Missing)
+        prompt = Prompt.objects.get(k)
         print(f"{k} produced:\n{prompt.text}")
         return prompt.text
     __getattr__ = __getitem__
@@ -310,12 +349,14 @@ def _trimmed_fetch_response(resp, n):
 async def petition_completion2(petition: Petition, additional: Optional[dict] = None, content_filter_check: bool = False, user: str = None) -> Tuple[Completion, str]:
     petition.load_all()
     # remove the prompt_break symbols from the prompt by default
-    prompt = petition.prompt.text
+    if petition.chatprompt_name is not None:
+        # prompt is a chatprompt object now
+        prompt = petition.chatprompt
+    else:
+        # prompt is a string now
+        prompt = petition.prompt.text
     params = petition.params
     
-    # print out the prompt name
-    #print(f"Prompt name {petition.prompt_name} for petition {petition.name}")
-
     # replace the prompt text using the dict in promptvars
     if petition.promptvars is not None:
         promptvars = petition.promptvars.vars
@@ -349,7 +390,7 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
     prompt = prompt.replace("{prompt_shot}", "")
     prompt = prompt.replace("{prompt_break}", "")
     # store the last prompt in a file called last_prompt.log
-    with open("last_prompt.log", "w") as f:
+    with open("last_prompt.log", "w", encoding="utf8") as f:
         f.write(prompt)
 
     # call cleaned_completion_wrapper with the params
@@ -389,7 +430,7 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
     
 
     # store the last prompt in a file called last_prompt.log
-    with open("last_response.log", "w") as f:
+    with open("last_response.log", "w", encoding="utf8") as f:
         f.write(response + prompt_break)
         if user:
             f.write(f"\nUser: {user}")

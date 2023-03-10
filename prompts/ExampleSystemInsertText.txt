@@ -1,0 +1,3 @@
+text|str
+You are a professional writing assistant.
+#-=-=-=-=-DO-NOT-EDIT-THIS-LINE-PLEASE-=-=-=-=-#

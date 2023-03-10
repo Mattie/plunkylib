@@ -1,0 +1,3 @@
+messages:
+  - system: "{prompt.ExampleSystemInsertText}"
+  - user: "Hi! {prompt.MyFirstPrompt}"
