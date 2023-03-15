@@ -1,0 +1,3 @@
+text|str
+Dangerous monsters
+#-=-=-=-=-DO-NOT-EDIT-THIS-LINE-PLEASE-=-=-=-=-#

@@ -36,7 +36,6 @@ env_path = Path('.') / '.env'
 load_dotenv(dotenv_path=env_path)
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
-MAX_SEARCH_DOCUMENT_QUANTITY = 200
 
 async def set_api_key(api_key):
     openai.api_key = api_key
@@ -378,12 +377,31 @@ async def content_classification(content_to_classify):
 
     return output_label
 
+async def search_query(*args, **kwargs):
+    # if the keyword argument "engine" was included, we check for pinecone and then use the pinecone_vectorsearch_query method
+    if "engine" in kwargs:
+        if kwargs["engine"] == "pinecone":
+            return await pinecone_vectorsearch_query(*args, **kwargs)
+        else:
+            # ain't no other alternative right now
+            return None
 
-def main(fn, **args):
-    '''
-    Main function that runs logic. Accepts a function implemented on your end!
-    '''
-    tic = time.perf_counter()
-    asyncio.run(fn(**args))
-    toc = time.perf_counter()
-    logger.debug(f"FINISHED WORKFLOW IN {toc - tic:0.4f} SECONDS")
+# attempt at making an ai21 jurassic query that mimics the chronological/gpt3 query
+async def pinecone_vectorsearch_query(query, index="default", engine="pinecone", embedding_model="text-embedding-ada-002", top_k=1, include_metadata=True, include_values=False, filter=None, result_format="---\n{result}\n"):
+    import pinecone
+    pinecone.init(api_key=os.getenv("PINECONE_API_KEY"),
+                  environment=os.getenv("PINECONE_PROJ_ENVIRONMENT"))
+
+    # get the index
+    index = pinecone.Index(index)
+
+    # convert the query to a vector use the OpenAI embedding model -- one day we'll support other embedding models perhaps
+    xq = openai.Embedding.create(input=query, engine=embedding_model)['data'][0]['embedding']
+
+    res = index.query(xq, top_k=top_k, include_metadata=include_metadata, include_values=include_values, filter=filter)
+    output = ""
+    for match in res['matches']:
+        content = match['metadata']['text'] if 'metadata' in match and 'text' in match['metadata'] else ""
+        sourceinfo = match['metadata']['source'] if 'metadata' in match and 'source' in match['metadata'] else ""
+        output += result_format.format(result=content, score=match['score'], source=sourceinfo)
+    return output

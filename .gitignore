@@ -5,6 +5,9 @@ params/*
 prompts/*
 petition/*
 completions/*
+datafiles/vectorsearch/*
+datafiles/vectorsearchparams/*
+samples*/*
 
 # ignore the log files when generated
 *.log
@@ -18,3 +21,4 @@ __pycache__
 !params/Example*.*
 !prompts/Example*.*
 !petition/Example*.*
+!datafiles/**/Example*.*

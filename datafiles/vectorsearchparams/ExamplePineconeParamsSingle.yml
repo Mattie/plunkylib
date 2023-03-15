@@ -1,0 +1,8 @@
+engine: pinecone
+index: idx-alexandria2
+top_k: 1
+include_metadata: true
+include_values: true
+result_format: "TITLE: {source}\n{result}\n---\n"
+filter:
+embedding: ExampleGPT3_Embedding

@@ -2,7 +2,7 @@
 import nest_asyncio
 nest_asyncio.apply()
 from datetime import datetime
-from .aiwrapper import cleaned_completion_wrapper, content_classification
+from .aiwrapper import cleaned_completion_wrapper, content_classification, search_query
 from dataclasses import dataclass, field
 from typing import IO, ClassVar, List, Dict, Optional, Tuple
 from asyncio import run as aiorun
@@ -208,7 +208,38 @@ class Completion:
        self.parent = Completion.objects.get(self.parent_name) if self.parent_name is not Missing else None
 
 
+@datafile("./datafiles/vectorsearchparams/{self.name}.yml", defaults=True)
+class VectorSearchParams:
+    name: str
+    engine: str = "pinecone"
+    index: str = "default"
+    embedding: str = "ExampleGPT3_Embedding"
+    top_k: int = 1
+    include_metadata: bool = False
+    include_values: bool = False
+    result_format: str = "---\n{result}"
+    filter: Optional[str] = None
+    embedding_params: ClassVar[CompletionParams]
 
+    def load_all(self):
+        if self.embedding is not None:
+            self.embedding_params = CompletionParams.objects.get(self.embedding)
+
+@datafile("./datafiles/vectorsearch/{self.name}.yml")
+class VectorSearch:
+    name: str
+    params_name: str
+    prompt_name: Optional[str]  = None
+    prompt: ClassVar[Prompt]
+    params: ClassVar[VectorSearchParams]
+    # post init to initialize the prompt and params
+    def load_all(self):
+        # default to the prompt of the same name
+        if (self.prompt_name is None or self.prompt_name == ""):
+            self.prompt_name = self.name
+        self.prompt = Prompt.objects.get(self.prompt_name)
+        self.params = VectorSearchParams.objects.get(self.params_name)
+        self.params.load_all()
         
 
 @datafile("./namedlists/{self.list_name}.yml")
@@ -239,7 +270,12 @@ async def normal_completion(prompt) -> str:
     return response
 
 async def petition_completion(petition: Petition) -> str:
-    prompt = petition.prompt.text
+    if petition.chatprompt_name is not None:
+        # prompt is a chatprompt object now
+        prompt = petition.chatprompt.get_json()
+    else:
+        # prompt is a string now
+        prompt = petition.prompt.text    
     params = petition.params
     # call cleaned_completion_wrapper with the params
     response = await cleaned_completion_wrapper(
@@ -274,6 +310,23 @@ class PromptGetter:
 # pretend dictionary that maps petition names to execute them dynamically for recursive calls
 class PetGetter:
     """Used for performing a nested query of another petition when completing a prompt/petition"""
+    def __init__(self, src, addl = None):
+        self.src = src
+        self.addl = addl
+
+    def __getitem__(self, k):
+        async def completer_coro():
+            return await self.src(k, self.addl)
+        x = aiorun(completer_coro())
+        # print x and tell them what we're doing
+        print(f"{k} produced:\n{x}")
+        return x
+    
+    __getattr__ = __getitem__
+
+# pretend dictionary that maps petition names to execute them dynamically for recursive calls
+class VectorSearchGetter:
+    """Used for variable expansion of search results inside other prompts"""
     def __init__(self, src, addl = None):
         self.src = src
         self.addl = addl
@@ -362,7 +415,7 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
         promptvars = petition.promptvars.vars
         promptvars['prompt_break'] = '{prompt_break}'
         promptvars['prompt_shot'] = '{prompt_shot}'
-        prompt = prompt.format(prompt=PromptGetter(), pet=PetGetter(petition_name_completion, additional), randomlist=RandomListGetter(), **promptvars)
+        prompt = prompt.format(prompt=PromptGetter(), pet=PetGetter(petition_name_completion, additional), randomlist=RandomListGetter(), vsearch=VectorSearchGetter(vectorsearch_name_query, additional),**promptvars)
     else:
         if additional is None:
             additional = {}
@@ -370,6 +423,7 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
                                question=QuestionGetter(prompt, petition_name_completion), 
                                prompt=PromptGetter(),
                                randomlist=RandomListGetter(),
+                               vsearch=VectorSearchGetter(vectorsearch_name_query, additional),
                                prompt_break="{prompt_break}",
                                prompt_shot="{prompt_shot}",
                                **additional)
@@ -440,3 +494,37 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
 
     return completion, prompt_break
 
+async def vectorsearch_name_query(vsearch_name: str, additional: Optional[dict] = None) -> str:
+    vsearch = VectorSearch.objects.get(vsearch_name)
+    vsearch.load_all()
+    return await vectorsearch_query(vsearch, additional)
+
+async def vectorsearch_query(vsearch: VectorSearch, additional: Optional[dict] = None) -> str:
+    # prompt is a string now
+    prompt = vsearch.prompt.text
+    # TODO find a cleaner way to do this
+    if additional is None:
+        additional = {}
+    prompt = prompt.format(pet=PetGetter(petition_name_completion, additional),
+                            question=QuestionGetter(prompt, petition_name_completion), 
+                            prompt=PromptGetter(),
+                            randomlist=RandomListGetter(),
+                            vsearch=VectorSearchGetter(vectorsearch_query, additional),
+                            **additional)
+    vparams = vsearch.params
+
+    # we are going to take the params and the prompt (as the query string) and use them to call search_query()
+    # async def search_query(query, index="default", engine="pinecone", embedding_model="text-embedding-ada-002", top_k=1, include_metadata=True, include_values=False, filter=None, result_format="---\n{result}\n"):
+
+    response = await search_query(
+        query=prompt,
+        index=vparams.index,
+        engine=vparams.engine,
+        embedding_model=vparams.embedding_params.engine,
+        top_k=vparams.top_k,
+        include_metadata=vparams.include_metadata,
+        include_values=vparams.include_values,
+        filter=vparams.filter,
+        result_format=vparams.result_format,
+    )
+    return response
