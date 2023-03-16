@@ -299,12 +299,39 @@ async def petition_name_completion(petition_name: str, additional: Optional[dict
     completion, prompt1 = await petition_completion2(petition, additional)
     return prompt1 + completion.text
 
+# need a function that will return the dictionary needed to support prompt formatting
+def text_expander(additional: Optional[dict] = None) -> dict:
+    if additional is None:
+        additional = {}    
+    return {
+        "pet": PetGetter(petition_name_completion, additional),
+        "prompt": PromptGetter(prompt_name_expansion, additional),
+        "vsearch": VectorSearchGetter(vectorsearch_name_query, additional),
+        "randomlist": RandomListGetter(),
+        "prompt_break": "{prompt_break}",
+        "prompt_shot": "{prompt_shot}",
+        **additional,
+    }
+
+
+async def prompt_name_expansion(prompt_name: str, additional: Optional[dict] = None) -> str:
+    prompt = Prompt.objects.get(prompt_name)
+    return prompt.text.format(**text_expander(additional))
+
 class PromptGetter:
     """Used for variable expansion of prompt text inside other prompts"""
+    def __init__(self, src, addl = None):
+        self.src = src
+        self.addl = addl
+
     def __getitem__(self, k):
-        prompt = Prompt.objects.get(k)
-        print(f"{k} produced:\n{prompt.text}")
-        return prompt.text
+        async def completer_coro():
+            return await self.src(k, self.addl)
+        x = aiorun(completer_coro())
+        # print x and tell them what we're doing
+        print(f"{k} produced:\n{x}")
+        return x
+    
     __getattr__ = __getitem__
 
 # pretend dictionary that maps petition names to execute them dynamically for recursive calls
@@ -415,18 +442,14 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
         promptvars = petition.promptvars.vars
         promptvars['prompt_break'] = '{prompt_break}'
         promptvars['prompt_shot'] = '{prompt_shot}'
-        prompt = prompt.format(prompt=PromptGetter(), pet=PetGetter(petition_name_completion, additional), randomlist=RandomListGetter(), vsearch=VectorSearchGetter(vectorsearch_name_query, additional),**promptvars)
+        # add the additional dictionary to promptvars
+        if additional is not None:
+            promptvars.update(additional)
+        prompt = prompt.format(**text_expander(promptvars))
     else:
         if additional is None:
             additional = {}
-        prompt = prompt.format(pet=PetGetter(petition_name_completion, additional),
-                               question=QuestionGetter(prompt, petition_name_completion), 
-                               prompt=PromptGetter(),
-                               randomlist=RandomListGetter(),
-                               vsearch=VectorSearchGetter(vectorsearch_name_query, additional),
-                               prompt_break="{prompt_break}",
-                               prompt_shot="{prompt_shot}",
-                               **additional)
+        prompt = prompt.format(**text_expander(additional))
 
     # we use "{prompt_break}" automatically as a marker and we need to process it out
     # first lets get all text after "{prompt_break}:
@@ -505,12 +528,7 @@ async def vectorsearch_query(vsearch: VectorSearch, additional: Optional[dict] =
     # TODO find a cleaner way to do this
     if additional is None:
         additional = {}
-    prompt = prompt.format(pet=PetGetter(petition_name_completion, additional),
-                            question=QuestionGetter(prompt, petition_name_completion), 
-                            prompt=PromptGetter(),
-                            randomlist=RandomListGetter(),
-                            vsearch=VectorSearchGetter(vectorsearch_query, additional),
-                            **additional)
+    prompt = prompt.format(**text_expander(additional))
     vparams = vsearch.params
 
     # we are going to take the params and the prompt (as the query string) and use them to call search_query()
