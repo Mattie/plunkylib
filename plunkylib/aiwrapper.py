@@ -60,21 +60,21 @@ async def _completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_
     Best Of: {12}
     Logit Bias: {13}
     User: {14}""".format(prompt, temperature, engine, max_tokens, top_p, stop, presence_penalty, frequency_penalty, echo, n, stream, logprobs, best_of, logit_bias, user))
-    response = openai.Completion.create(engine=engine,
-                                        prompt=prompt,
-                                        max_tokens=max_tokens,
-                                        temperature=temperature,
-                                        top_p=top_p,
-                                        presence_penalty=presence_penalty,
-                                        frequency_penalty=frequency_penalty,
-                                        echo=echo,
-                                        stop=stop,
-                                        n=n,
-                                        stream=stream,
-                                        logprobs=logprobs,
-                                        best_of=best_of,
-                                        logit_bias=logit_bias,
-                                        user=user)
+    response = await openai.Completion.acreate(engine=engine,
+                                                prompt=prompt,
+                                                max_tokens=max_tokens,
+                                                temperature=temperature,
+                                                top_p=top_p,
+                                                presence_penalty=presence_penalty,
+                                                frequency_penalty=frequency_penalty,
+                                                echo=echo,
+                                                stop=stop,
+                                                n=n,
+                                                stream=stream,
+                                                logprobs=logprobs,
+                                                best_of=best_of,
+                                                logit_bias=logit_bias,
+                                                user=user)
     logger.debug("GPT-3 Completion Result: {0}".format(response))
     return response
 
@@ -101,18 +101,18 @@ async def _chatcompletion(prompt, engine="gpt-3.5-turbo", max_tokens=64, tempera
     Stream: {9}
     Logit Bias: {10}
     User: {11}""".format(prompt, temperature, engine, max_tokens, top_p, stop, presence_penalty, frequency_penalty, n, stream, logit_bias, user))
-    response = openai.ChatCompletion.create(model=engine,
-                                        messages=messages,
-                                        max_tokens=max_tokens,
-                                        temperature=temperature,
-                                        top_p=top_p,
-                                        presence_penalty=presence_penalty,
-                                        frequency_penalty=frequency_penalty,
-                                        stop=stop,
-                                        n=n,
-                                        stream=stream,
-                                        logit_bias=logit_bias,
-                                        user=user)
+    response = await openai.ChatCompletion.acreate(model=engine,
+                                            messages=messages,
+                                            max_tokens=max_tokens,
+                                            temperature=temperature,
+                                            top_p=top_p,
+                                            presence_penalty=presence_penalty,
+                                            frequency_penalty=frequency_penalty,
+                                            stop=stop,
+                                            n=n,
+                                            stream=stream,
+                                            logit_bias=logit_bias,
+                                            user=user)
     logger.debug("GPT-3 Completion Result: {0}".format(response))
     return response
 
@@ -396,7 +396,9 @@ async def pinecone_vectorsearch_query(query, index="default", engine="pinecone",
     index = pinecone.Index(index)
 
     # convert the query to a vector use the OpenAI embedding model -- one day we'll support other embedding models perhaps
-    xq = openai.Embedding.create(input=query, engine=embedding_model)['data'][0]['embedding']
+    axq = await openai.Embedding.acreate(input=query, engine=embedding_model)
+    #TODO error handling
+    xq = axq['data'][0]['embedding']
 
     res = index.query(xq, top_k=top_k, include_metadata=include_metadata, include_values=include_values, filter=filter)
     output = ""
