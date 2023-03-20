@@ -31,9 +31,6 @@ import os
 import json
 from pathlib import Path
 from loguru import logger
-from dotenv import load_dotenv
-env_path = Path('.') / '.env'
-load_dotenv(dotenv_path=env_path)
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -170,13 +167,6 @@ def add_new_lines_start(prompt, count):
     Add N new lines to the start of a string.
     '''
     return "{1}{0}".format(prompt, "\n"*count)
-
-def read_prompt(filename):
-    '''
-    Looks in prompts/ directory for a text file. Pass in file name only, not extension.
-    Example: prompts/hello-world.txt -> read_prompt('hello-world')
-    '''
-    return Path('./prompts/{0}.txt'.format(filename)).read_text()
 
 async def gather(*args):
     '''
