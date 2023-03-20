@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 datafiles/plunkylib/*/*.*
 samples*/*
+dist/**
+build/**
+logs/**
 
 # ignore the log files when generated
 *.log
