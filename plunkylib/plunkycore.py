@@ -23,6 +23,14 @@ else:
     PLUNKYLIB_BASE_DIR = os.getenv("PLUNKYLIB_BASE_DIR")
     PLUNKYLIB_BASE_DIR = PLUNKYLIB_BASE_DIR.rstrip("/")
 
+if os.getenv("PLUNKYLIB_LOGS_DIR") is None:
+    PLUNKYLIB_LOGS_DIR = None   # no logging by default
+else:
+    PLUNKYLIB_LOGS_DIR = os.getenv("PLUNKYLIB_LOGS_DIR")
+    PLUNKYLIB_LOGS_DIR = PLUNKYLIB_LOGS_DIR.rstrip("/")
+
+
+
 
 # constants for no (0.0), low (0.4), normal (0.7), high (0.9), and max (1.0) temperature:
 @dataclass
@@ -478,8 +486,13 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
     prompt = prompt.replace("{prompt_shot}", "")
     prompt = prompt.replace("{prompt_break}", "")
     # store the last prompt in a file called last_prompt.log
-    with open("last_prompt.log", "w", encoding="utf8") as f:
-        f.write(prompt)
+    # create logs directory if it doesn't exist
+    if PLUNKYLIB_LOGS_DIR is not None:
+        # create logs directory if it doesn't exist, recursively
+        if not os.path.exists(PLUNKYLIB_LOGS_DIR):
+            os.makedirs(PLUNKYLIB_LOGS_DIR)
+        with open(PLUNKYLIB_LOGS_DIR + "/last_prompt.log", "w", encoding="utf8") as f:
+            f.write(prompt)
 
     # call cleaned_completion_wrapper with the params
     response = await cleaned_completion_wrapper(
@@ -518,12 +531,16 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
     
 
     # store the last prompt in a file called last_prompt.log
-    with open("last_response.log", "w", encoding="utf8") as f:
-        f.write(response + prompt_break)
-        if user:
-            f.write(f"\nUser: {user}")
-        if content_filter_check:
-            f.write(f"\nContent filter rating: {level}")
+    if PLUNKYLIB_LOGS_DIR is not None:
+        # create logs directory if it doesn't exist, recursively
+        if not os.path.exists(PLUNKYLIB_LOGS_DIR):
+            os.makedirs(PLUNKYLIB_LOGS_DIR)
+        with open(PLUNKYLIB_LOGS_DIR + "/last_response.log", "w", encoding="utf8") as f:
+            f.write(response + prompt_break)
+            if user:
+                f.write(f"\nUser: {user}")
+            if content_filter_check:
+                f.write(f"\nContent filter rating: {level}")
 
 
     return completion, prompt_break
