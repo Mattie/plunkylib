@@ -5,10 +5,11 @@ nest_asyncio.apply()
 import dataclasses
 from datafiles import Missing
 import typer
-from plunkylib import Prompt, CompletionParams, Petition, PromptVars, simple_completion, normal_completion, petition_completion, petition_completion2
+from .plunkycore import Prompt, CompletionParams, Petition, PromptVars, simple_completion, normal_completion, petition_completion, petition_completion2
 from asyncio import run as aiorun
-from loguru import logger
 from typing import Optional
+
+
 
 app = typer.Typer()
 prompt_app = typer.Typer()
@@ -48,7 +49,7 @@ def use_pet(petition_name: str, extra_text: Optional[str] = typer.Argument(None)
     >python cli.py complete use_pet "petition_name"
     """
 
-    petition = Petition(petition_name, Missing, Missing)
+    petition = Petition.objects.get(petition_name)
     petition.load_all()
     async def completer_coro():
         if extra_text is None:
@@ -188,13 +189,13 @@ def create(name: str, prompt_name: str, param_name: str, promptvars_name: Option
 
 @petitions_app.command()
 def print(name: str):
-    petition = Petition(name, Missing, Missing)
+    petition = Petition.get(name)
     petition.load_all()
     typer.echo(f"Printing Petition {name}, {petition}, {petition.prompt.text}")
 
 @petitions_app.command()
 def copyfrom(source_name: str, dest_name: str):
-    petition = Petition(source_name, Missing, Missing)
+    petition = Petition.get(source_name)
     petition.load_all()
     pet2 = dataclasses.replace(petition, name=dest_name)
     typer.echo(f"Copied Petition {source_name} to {dest_name}:\n{pet2}")
@@ -215,19 +216,3 @@ def copyfrom(source_name: str, dest_name: str):
 #     petition.load_all()
 #     typer.echo(f"Starting Interaction {name}, {petition}")
 #     # start the interactive mode
-
-
-if __name__ == "__main__":
-    # logging config should exclude warnings
-    config = {
-        "handlers": [
-            {"sink": "file.log", "format": "{time} - {message}"},
-        ],
-        "extra": {"user": "someone"},
-    }
-    logger.configure(**config)
-    import log
-    log.silence("datafiles")
-    log.silence("openai")
-    log.silence("chronological")
-    app()
