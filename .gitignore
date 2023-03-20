@@ -1,12 +1,7 @@
 .*
 __pycache__/
 *.pyc
-params/*
-prompts/*
-petition/*
-completions/*
-datafiles/vectorsearch/*
-datafiles/vectorsearchparams/*
+datafiles/plunkylib/*/*.*
 samples*/*
 
 # ignore the log files when generated
@@ -18,7 +13,7 @@ __pycache__
 !.env.template
 
 # don't ignore our samples
-!params/Example*.*
-!prompts/Example*.*
-!petition/Example*.*
-!datafiles/**/Example*.*
+!**/Example*.*
+
+# we don't want completions even if they are samples
+datafiles/plunkylib/completions/**

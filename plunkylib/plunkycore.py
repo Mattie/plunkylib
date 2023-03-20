@@ -12,6 +12,17 @@ from pydoc import locate
 import questionary
 import random
 import json
+import os
+
+
+# if there's no "PLUNKYLIB_DIR" env variable, use that for our default path variable and set it to './datafiles/plunkylib'
+# this is the default directory for all plunkylib datafiles
+if os.getenv("PLUNKYLIB_BASE_DIR") is None:
+    PLUNKYLIB_BASE_DIR = "./datafiles/plunkylib"
+else:
+    PLUNKYLIB_BASE_DIR = os.getenv("PLUNKYLIB_BASE_DIR")
+    PLUNKYLIB_BASE_DIR = PLUNKYLIB_BASE_DIR.rstrip("/")
+
 
 # constants for no (0.0), low (0.4), normal (0.7), high (0.9), and max (1.0) temperature:
 @dataclass
@@ -111,18 +122,18 @@ formats.register('.txt', TxtFormat)
 # (6) NamedList, a list of named items, used for storing things like random lists you might want to expand inside a prompt
 
 
-@datafile("./prompts/{self.name}.txt")
+@datafile(PLUNKYLIB_BASE_DIR + "/prompts/{self.name}.txt")
 class Prompt:
     name: str
     text: str
 
-@datafile("./promptvars/{self.name}.yml")
+@datafile(PLUNKYLIB_BASE_DIR + "/promptvars/{self.name}.yml")
 class PromptVars:
     name: str
     # need a dictionary
     vars: Dict[str, str]
 
-@datafile("./prompts/{self.chatprompt_name}.yml")
+@datafile(PLUNKYLIB_BASE_DIR + "/prompts/{self.chatprompt_name}.yml")
 class ChatPrompt:
     chatprompt_name: str
     messages: List[Dict[str, str]]
@@ -147,7 +158,7 @@ class ChatPrompt:
 
 
 
-@datafile("./params/{self.name}.yml", defaults=True)
+@datafile(PLUNKYLIB_BASE_DIR + "/params/{self.name}.yml", defaults=True)
 class CompletionParams:
     name: str
     engine: str = "text-davinci-002"
@@ -161,7 +172,7 @@ class CompletionParams:
     presence_penalty: float = 0.0
     logprobs: Optional[int] = None
 
-@datafile("./petition/{self.name}.yml")
+@datafile(PLUNKYLIB_BASE_DIR + "/petition/{self.name}.yml")
 class Petition:
     name: str
     params_name: str
@@ -189,7 +200,7 @@ class Petition:
         else:
             self.promptvars = None
 
-@datafile("./completions/{self.name}.yml")
+@datafile(PLUNKYLIB_BASE_DIR + "/completions/{self.name}.yml")
 class Completion:
     name: str
     text: str
@@ -208,7 +219,7 @@ class Completion:
        self.parent = Completion.objects.get(self.parent_name) if self.parent_name is not Missing else None
 
 
-@datafile("./datafiles/vectorsearchparams/{self.name}.yml", defaults=True)
+@datafile(PLUNKYLIB_BASE_DIR + "/vectorsearchparams/{self.name}.yml", defaults=True)
 class VectorSearchParams:
     name: str
     engine: str = "pinecone"
@@ -225,7 +236,7 @@ class VectorSearchParams:
         if self.embedding is not None:
             self.embedding_params = CompletionParams.objects.get(self.embedding)
 
-@datafile("./datafiles/vectorsearch/{self.name}.yml")
+@datafile(PLUNKYLIB_BASE_DIR + "/vectorsearch/{self.name}.yml")
 class VectorSearch:
     name: str
     params_name: str
@@ -242,7 +253,7 @@ class VectorSearch:
         self.params.load_all()
         
 
-@datafile("./namedlists/{self.list_name}.yml")
+@datafile(PLUNKYLIB_BASE_DIR + "/namedlists/{self.list_name}.yml")
 class NamedList:
     list_name: str
     items: List[str]
