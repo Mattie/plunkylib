@@ -23,21 +23,48 @@
 # SOFTWARE.
 #######
 
-import heapq
 import time
 import asyncio
 import openai
 import os
 import json
-from pathlib import Path
 from loguru import logger
+from functools import wraps
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 async def set_api_key(api_key):
     openai.api_key = api_key
 
-# oai
+# decorator to retry API calls
+def retryAPI(exception, tries=4, delay=3, backoff=2):
+    """Retry calling the decorated function using an exponential backoff.
+    :param Exception exception: the exception to check. may be a tuple of
+        exceptions to check
+    :param int tries: number of times to try (not retry) before giving up
+    :param int delay: initial delay between retries in seconds
+    :param int backoff: backoff multiplier e.g. value of 2 will double the
+        delay each retry
+    :raises Exception: the last exception raised
+    """
+    def deco_retry(f):
+        @wraps(f)
+        def f_retry(*args, **kwargs):
+            mtries, mdelay = tries, delay
+            while mtries > 1:
+                try:
+                    return f(*args, **kwargs)
+                except exception as e:
+                    msg = "%s, Retrying in %d seconds..." % (str(e), mdelay)
+                    logger.debug(msg)
+                    time.sleep(mdelay)
+                    mtries -= 1
+                    mdelay *= backoff
+            return f(*args, **kwargs)
+        return f_retry  # true decorator
+    return deco_retry
+
+# openai
 async def _completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_p=1, stop=None, presence_penalty=0, frequency_penalty=0, echo=False, n=1, stream=False, logprobs=None, best_of=1, logit_bias={}, user=None):
     if user is None:
         user = "_not_set"
@@ -220,23 +247,26 @@ async def raw_completion(prompt, engine="ada", max_tokens=64, temperature=0.7, t
                              logit_bias=logit_bias)
     return _fetch_response(resp, n)
 
-# ChatGPT3
+
+# ChatGPT
+@retryAPI(openai.error.RateLimitError, tries=3, delay=2, backoff=2)
 async def cleaned_chat_completion(prompt, engine="gpt-3.5-turbo", max_tokens=64, temperature=0.7, top_p=1, stop=None, presence_penalty=0, frequency_penalty=0, n=1, stream=False, logprobs=None, logit_bias={}, user=None):
     '''
     Wrapper for OpenAI API chat completion. Returns whitespace trimmed result from ChatGPT3.
     '''
     resp = await _chatcompletion(prompt,
-                             engine=engine,
-                             max_tokens=max_tokens,
-                             temperature=temperature,
-                             top_p=top_p,
-                             presence_penalty=presence_penalty,
-                             frequency_penalty=frequency_penalty,
-                             stop=stop,
-                             n=n,
-                             stream=stream,
-                             logit_bias=logit_bias,
-                             user=user)
+                            engine=engine,
+                            max_tokens=max_tokens,
+                            temperature=temperature,
+                            top_p=top_p,
+                            presence_penalty=presence_penalty,
+                            frequency_penalty=frequency_penalty,
+                            stop=stop,
+                            n=n,
+                            stream=stream,
+                            logit_bias=logit_bias,
+                            user=user)
+
     return _trimmed_fetch_chat_response(resp, n)
 
 # Jurassic
