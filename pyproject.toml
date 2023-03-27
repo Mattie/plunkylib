@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "plunkylib"
-version = "0.1.3"
+version = "0.1.4"
 description = "plunkylib - Python LLM User Navigation Kit via YAML"
 authors = ["Mattie Casper"]
 license = "MIT"
