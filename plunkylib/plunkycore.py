@@ -221,8 +221,8 @@ class Completion:
 
     # post init to initialize the prompt and params
     def load_all(self):
-       self.petition = Petition.objects.get(self.petition_name) if self.petition_name is not Missing else None
-       self.parent = Completion.objects.get(self.parent_name) if self.parent_name is not Missing else None
+       self.petition = Petition.objects.get(self.petition_name) if self.petition_name is not Missing and self.petition_name is not None else None
+       self.parent = Completion.objects.get(self.parent_name) if self.parent_name is not Missing and self.parent_name is not None else None
 
 
 @datafile(PLUNKYLIB_BASE_DIR + "/vectorsearchparams/{self.name}.yml", defaults=True)
