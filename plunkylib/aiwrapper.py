@@ -70,19 +70,11 @@ async def _completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_
         user = "_not_set"
     logger.debug("""CONFIG:
     Prompt: {0}
-    Temperature: {1}
     Engine: {2}
-    Max Tokens: {3}
-    Top-P: {4}
-    Stop: {5}
-    Presence Penalty {6}
-    Frequency Penalty: {7}
-    Echo: {8}
-    N: {9}
-    Stream: {10}
-    Log-Probs: {11}
-    Best Of: {12}
-    Logit Bias: {13}
+    Max Tokens: {3}, Stop: {5}
+    Temperature: {1}, Top-P: {4}
+    Presence Penalty {6}, Frequency Penalty: {7}
+    Echo: {8},  N: {9}, Stream: {10}, Log-Probs: {11}, Best Of: {12}, Logit Bias: {13}
     User: {14}""".format(prompt, temperature, engine, max_tokens, top_p, stop, presence_penalty, frequency_penalty, echo, n, stream, logprobs, best_of, logit_bias, user))
     response = await openai.Completion.acreate(engine=engine,
                                                 prompt=prompt,
@@ -99,7 +91,7 @@ async def _completion(prompt, engine="ada", max_tokens=64, temperature=0.7, top_
                                                 best_of=best_of,
                                                 logit_bias=logit_bias,
                                                 user=user)
-    logger.debug("GPT-3 Completion Result: {0}".format(response))
+    logger.debug("OpenAI Completion Result: {0}".format(response))
     return response
 
 # oai
@@ -114,16 +106,11 @@ async def _chatcompletion(prompt, engine="gpt-3.5-turbo", max_tokens=64, tempera
         messages = json.loads(prompt)
     logger.debug("""CONFIG:
     Prompt: {0}
-    Temperature: {1}
     Model: {2}
-    Max Tokens: {3}
-    Top-P: {4}
-    Stop: {5}
-    Presence Penalty {6}
-    Frequency Penalty: {7}
-    N: {8}
-    Stream: {9}
-    Logit Bias: {10}
+    Max Tokens: {3}, Stop: {5}
+    Temperature: {1}, Top-P: {4}
+    Presence Penalty {6}, Frequency Penalty: {7}
+    N: {8}, Stream: {9}, Logit Bias: {10}
     User: {11}""".format(prompt, temperature, engine, max_tokens, top_p, stop, presence_penalty, frequency_penalty, n, stream, logit_bias, user))
     response = await openai.ChatCompletion.acreate(model=engine,
                                             messages=messages,
@@ -137,7 +124,7 @@ async def _chatcompletion(prompt, engine="gpt-3.5-turbo", max_tokens=64, tempera
                                             stream=stream,
                                             logit_bias=logit_bias,
                                             user=user)
-    logger.debug("GPT-3 Completion Result: {0}".format(response))
+    logger.debug("OpenAI Completion Result: {0}".format(response))
     return response
 
 def _fetch_response(resp, n):
