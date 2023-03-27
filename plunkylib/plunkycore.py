@@ -9,7 +9,6 @@ from asyncio import run as aiorun
 from datafiles import datafile, formats
 from datafiles import Missing
 from pydoc import locate
-import questionary
 import random
 import json
 import os
@@ -28,7 +27,6 @@ if os.getenv("PLUNKYLIB_LOGS_DIR") is None:
 else:
     PLUNKYLIB_LOGS_DIR = os.getenv("PLUNKYLIB_LOGS_DIR")
     PLUNKYLIB_LOGS_DIR = PLUNKYLIB_LOGS_DIR.rstrip("/")
-
 
 
 
@@ -392,46 +390,6 @@ class RandomListGetter:
     def __getitem__(self, k):
         return random.choice(NamedList(k, Missing).items)
     __getattr__ = __getitem__
-
-class QuestionGetter:
-    """Used for interactive mode to prompt the user for values when completing a prompt/petition"""
-    def __init__(self, src, func):
-        self.src = src
-        self.func = func
-
-    def __getitem__(self, k):
-        tosearch = self.src
-        context = ''
-        eol = False
-        # ask them if they want to complete the petition or type it themselves
-        # using questionary.select:
-        choice = questionary.select(f"{k}: Do you want to complete the petition {k} with GPT-3?",
-            choices=["Yes, autogenerate", "No, I'll type it myself"]).ask()
-        if choice == "Yes, autogenerate":
-            async def completer_coro():
-                return await self.func(k)
-            x = aiorun(completer_coro())
-            return x
-        else:
-            # loop through every line looking for k inside of it:
-            for line in tosearch.split("\n"):
-                if "." + k in line:
-                    context = line
-                    if line.endswith(k+"}") and not tosearch.endswith(k+"}"):
-                        eol = True
-                    break
-
-            # ask them if what they want to use to replace "k"?
-            x = questionary.text(f"\nFor this line:\n   {context}\nWhat do you want to use to replace 'question.{k}'?").ask()
-            
-            if eol and len(x) > 1:
-                x = x + "\n"
-            # print x and tell them what we're doing
-            print(f"{k} produced:\n{x}---")
-            return x
-    
-    __getattr__ = __getitem__
-
 
 
 def _trimmed_fetch_response(resp, n):
