@@ -5,13 +5,15 @@ from datetime import datetime
 from .aiwrapper import cleaned_completion_wrapper, content_classification, search_query
 from dataclasses import dataclass, field
 from typing import IO, ClassVar, List, Dict, Optional, Tuple
-from asyncio import run as aiorun
 from datafiles import datafile, formats
 from datafiles import Missing
 from pydoc import locate
-import random
+import asyncio
 import json
 import os
+import random
+import string
+from loguru import logger
 
 
 # if there's no "PLUNKYLIB_DIR" env variable, use that for our default path variable and set it to './datafiles/plunkylib'
@@ -152,6 +154,31 @@ class ChatPrompt:
             for role, content in message.items():
                 new_messages.append({"role": role, "content": content})
         return json.dumps(new_messages)
+    # async method that gathers will execute an async format method on every message in the chat prompt and gather the results into a final json string
+    async def gather_format(self, format_coro, **kwargs) -> str:
+        new_messages = []
+        for message in self.messages:
+            for role, content in message.items():
+                new_messages.append({"role": role, "content": content})
+        # we now apply the format_coro to the content of each message in each dictionary in the list
+        coros = []
+        for message in new_messages:
+            async def format_key(message):
+                logger.trace("formatting key: {role}", role=message['role'])
+                message["role"] = await format_coro(message["role"], **kwargs)
+                return
+            async def format_message(message):
+                logger.trace("formatting content: {content}", content=message['content'])
+                message["content"] = await format_coro(message["content"], **kwargs)
+                return
+            coros.append(format_key(message))
+            coros.append(format_message(message))
+        # gather the results
+        await asyncio.gather(*coros)
+        logger.trace(new_messages)
+        # return the json version of the expanded messages
+        return json.dumps(new_messages)
+
     def format(self, **kwargs) -> str:
         formatted_messages = []
         # loop through all the messages and format each dictionary value
@@ -160,7 +187,6 @@ class ChatPrompt:
                 formatted_messages.append({"role": role, "content": content.format(**kwargs)})
         # return json version of the messages
         return json.dumps(formatted_messages)
-        
 
 
 
@@ -310,6 +336,39 @@ async def petition_completion(petition: Petition) -> str:
     )
     return response
 
+class AsyncFormatter(string.Formatter):
+    async def async_expand_field(self, field, args, kwargs):
+        if "." in field:
+            obj, method = field.split(".", 1)
+            if obj in kwargs:
+                obj_instance = kwargs[obj]
+                if hasattr(obj_instance, method):
+                    method_instance = getattr(obj_instance, method)
+                    if asyncio.iscoroutinefunction(method_instance):
+                        return await method_instance()
+                    else:
+                        return method_instance() if callable(method_instance) else method_instance
+        value, _ = super().get_field(field, args, kwargs)
+        return value
+
+    async def async_format(self, format_string, *args, **kwargs):
+        coros = []
+        parsed_format = list(self.parse(format_string))
+
+        for literal_text, field_name, format_spec, conversion in parsed_format:
+            if field_name:
+                coro = self.async_expand_field(field_name, args, kwargs)
+                coros.append(coro)
+
+        expanded_fields = await asyncio.gather(*coros)
+        expanded_iter = iter(expanded_fields)
+
+        return ''.join([
+            literal_text + (str(next(expanded_iter)) if field_name else '')
+            for literal_text, field_name, format_spec, conversion in parsed_format
+        ])
+aformatter = AsyncFormatter()
+
 # accepts a petition name as a string and calls petition_completion2, returning only the completion text
 async def petition_name_completion(petition_name: str, additional: Optional[dict] = None) -> str:
     petition = Petition.objects.get(petition_name)
@@ -321,9 +380,9 @@ def text_expander(additional: Optional[dict] = None) -> dict:
     if additional is None:
         additional = {}    
     return {
-        "pet": PetGetter(petition_name_completion, additional),
-        "prompt": PromptGetter(prompt_name_expansion, additional),
-        "vsearch": VectorSearchGetter(vectorsearch_name_query, additional),
+        "pet": AsyncGetter(petition_name_completion, additional),
+        "prompt": AsyncGetter(prompt_name_expansion, additional),
+        "vsearch": AsyncGetter(vectorsearch_name_query, additional),
         "randomlist": RandomListGetter(),
         "prompt_break": "{prompt_break}",
         "prompt_shot": "{prompt_shot}",
@@ -333,57 +392,24 @@ def text_expander(additional: Optional[dict] = None) -> dict:
 
 async def prompt_name_expansion(prompt_name: str, additional: Optional[dict] = None) -> str:
     prompt = Prompt.objects.get(prompt_name)
-    return prompt.text.format(**text_expander(additional))
+    result = await aformatter.async_format(prompt.text, **text_expander(additional))
+    return result
 
-class PromptGetter:
-    """Used for variable expansion of prompt text inside other prompts"""
+class AsyncGetter:
+    """Used for parallel variable expansion"""
     def __init__(self, src, addl = None):
         self.src = src
         self.addl = addl
 
     def __getitem__(self, k):
         async def completer_coro():
-            return await self.src(k, self.addl)
-        x = aiorun(completer_coro())
-        # print x and tell them what we're doing
-        print(f"{k} produced:\n{x}")
-        return x
+            x = await self.src(k, self.addl)
+            logger.trace("Getter lookup for {k} produced:\n{x}", k=k, x=x)
+            return x
+        return completer_coro
     
     __getattr__ = __getitem__
 
-# pretend dictionary that maps petition names to execute them dynamically for recursive calls
-class PetGetter:
-    """Used for performing a nested query of another petition when completing a prompt/petition"""
-    def __init__(self, src, addl = None):
-        self.src = src
-        self.addl = addl
-
-    def __getitem__(self, k):
-        async def completer_coro():
-            return await self.src(k, self.addl)
-        x = aiorun(completer_coro())
-        # print x and tell them what we're doing
-        print(f"{k} produced:\n{x}")
-        return x
-    
-    __getattr__ = __getitem__
-
-# pretend dictionary that maps petition names to execute them dynamically for recursive calls
-class VectorSearchGetter:
-    """Used for variable expansion of search results inside other prompts"""
-    def __init__(self, src, addl = None):
-        self.src = src
-        self.addl = addl
-
-    def __getitem__(self, k):
-        async def completer_coro():
-            return await self.src(k, self.addl)
-        x = aiorun(completer_coro())
-        # print x and tell them what we're doing
-        print(f"{k} produced:\n{x}")
-        return x
-    
-    __getattr__ = __getitem__
 
 class RandomListGetter:
     """Used for expanding a random list from a named list"""
@@ -405,28 +431,29 @@ def _trimmed_fetch_response(resp, n):
 # this returns a Completion object and the string prompt
 async def petition_completion2(petition: Petition, additional: Optional[dict] = None, content_filter_check: bool = False, user: str = None) -> Tuple[Completion, str]:
     petition.load_all()
-    # remove the prompt_break symbols from the prompt by default
-    if petition.chatprompt_name is not None:
-        # prompt is a chatprompt object now
-        prompt = petition.chatprompt
-    else:
-        # prompt is a string now
-        prompt = petition.prompt.text
     params = petition.params
+
+    
+    promptvars = {}
     
     # replace the prompt text using the dict in promptvars
     if petition.promptvars is not None:
-        promptvars = petition.promptvars.vars
+        promptvars.update(petition.promptvars.vars)
         promptvars['prompt_break'] = '{prompt_break}'
         promptvars['prompt_shot'] = '{prompt_shot}'
-        # add the additional dictionary to promptvars
-        if additional is not None:
-            promptvars.update(additional)
-        prompt = prompt.format(**text_expander(promptvars))
+
+    if additional is not None:
+        promptvars.update(additional)
+
+    # remove the prompt_break symbols from the prompt by default
+    if petition.chatprompt_name is not None:
+        # prompt is a chatprompt object now
+        prompt = await petition.chatprompt.gather_format(aformatter.async_format, **text_expander(promptvars))
     else:
-        if additional is None:
-            additional = {}
-        prompt = prompt.format(**text_expander(additional))
+        # prompt is a string now
+        prompt = petition.prompt.text
+        prompt = await aformatter.async_format(prompt, **text_expander(promptvars))
+
 
     # we use "{prompt_break}" automatically as a marker and we need to process it out
     # first lets get all text after "{prompt_break}:
@@ -483,7 +510,7 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
         try:
             level = await content_classification(prompt + response + prompt_break)
         except Exception as e:
-            print(f"Error: {e}")
+            logger.error(f"Error: {e}")
             level = "-1"
         completion.content_filter_rating = int(level)
     
@@ -514,7 +541,7 @@ async def vectorsearch_query(vsearch: VectorSearch, additional: Optional[dict] =
     # TODO find a cleaner way to do this
     if additional is None:
         additional = {}
-    prompt = prompt.format(**text_expander(additional))
+    prompt = await aformatter.async_format(prompt, **text_expander(additional))    
     vparams = vsearch.params
 
     # we are going to take the params and the prompt (as the query string) and use them to call search_query()
@@ -532,3 +559,5 @@ async def vectorsearch_query(vsearch: VectorSearch, additional: Optional[dict] =
         result_format=vparams.result_format,
     )
     return response
+
+logger.debug("plunkylib.plunkycore loaded")
