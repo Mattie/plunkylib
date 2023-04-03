@@ -49,18 +49,18 @@ def retryAPI(exception, tries=4, delay=3, backoff=2):
     """
     def deco_retry(f):
         @wraps(f)
-        def f_retry(*args, **kwargs):
+        async def f_retry(*args, **kwargs):
             mtries, mdelay = tries, delay
             while mtries > 1:
                 try:
-                    return f(*args, **kwargs)
+                    return await f(*args, **kwargs)
                 except exception as e:
                     msg = "%s, Retrying in %d seconds..." % (str(e), mdelay)
                     logger.debug(msg)
-                    time.sleep(mdelay)
+                    await asyncio.sleep(mdelay)
                     mtries -= 1
                     mdelay *= backoff
-            return f(*args, **kwargs)
+            return await f(*args, **kwargs)
         return f_retry  # true decorator
     return deco_retry
 
