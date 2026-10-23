@@ -5,7 +5,6 @@ import os
 import pytest
 import shutil
 from plunkylib import Prompt, PromptVars, ChatPrompt, CompletionParams, Petition, PLUNKYLIB_BASE_DIR, PLUNKYLIB_LOGS_DIR
-from datafiles import settings as datafiles_settings
 
 @pytest.fixture(scope="function", autouse=True)
 def setup_and_cleanup():
@@ -93,8 +92,8 @@ async def test_petition_completion2():
     )
 
     # Save the Prompt and CompletionParams
-    prompt.datafile.save()
-    completion_params.datafile.save()
+    prompt.snapshot.save()
+    completion_params.snapshot.save()
 
     # Prepare the test data
     petition_example = Petition("TestFirstPetition", prompt_name="TestFirstPrompt", params_name="TestFirstEngine")
@@ -122,7 +121,7 @@ async def test_petition_completion2_chat():
         "you will respond with \"Unknown\".\n\n"
     )
     prompt = Prompt(name="TestSystemInsertText", text=prompt_text)
-    prompt.datafile.save()
+    prompt.snapshot.save()
 
     # create a prompt called TestAnotherPrompt (also text)
     prompt_text = (
@@ -140,7 +139,7 @@ async def test_petition_completion2_chat():
         {"user": "Q: {prompt.TestAnotherPrompt}"}
     ]
     chatprompt = ChatPrompt(chatprompt_name="TestChatPrompt", messages=messages)
-    chatprompt.datafile.save()
+    chatprompt.snapshot.save()
 
     # now we need an engine using these:
         # engine: gpt-3.5-turbo
@@ -162,7 +161,7 @@ async def test_petition_completion2_chat():
         frequency_penalty=0.0,
         presence_penalty=0.0,
     )
-    completion_params.datafile.save()
+    completion_params.snapshot.save()
 
     petition_example = Petition("TestChatPetition", chatprompt_name="TestChatPrompt", params_name="TestChatEngine")
     petition_example.load_all()

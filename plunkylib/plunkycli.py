@@ -3,7 +3,7 @@
 import nest_asyncio
 nest_asyncio.apply()
 import dataclasses
-from datafiles import Missing
+from snapclass import Missing
 import typer
 from .plunkycore import Prompt, CompletionParams, Petition, PromptVars, simple_completion, normal_completion, petition_completion, petition_completion2
 from asyncio import run as aiorun
@@ -49,7 +49,7 @@ def use_pet(petition_name: str, extra_text: Optional[str] = typer.Argument(None)
     >python cli.py complete use_pet "petition_name"
     """
 
-    petition = Petition.objects.get(petition_name)
+    petition = Petition.snapshots.get(petition_name)
     petition.load_all()
     async def completer_coro():
         if extra_text is None:
@@ -189,13 +189,13 @@ def create(name: str, prompt_name: str, param_name: str, promptvars_name: Option
 
 @petitions_app.command()
 def print(name: str):
-    petition = Petition.get(name)
+    petition = Petition.snapshots.get(name)
     petition.load_all()
     typer.echo(f"Printing Petition {name}, {petition}, {petition.prompt.text}")
 
 @petitions_app.command()
 def copyfrom(source_name: str, dest_name: str):
-    petition = Petition.get(source_name)
+    petition = Petition.snapshots.get(source_name)
     petition.load_all()
     pet2 = dataclasses.replace(petition, name=dest_name)
     typer.echo(f"Copied Petition {source_name} to {dest_name}:\n{pet2}")

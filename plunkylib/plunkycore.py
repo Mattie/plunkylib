@@ -4,10 +4,9 @@ nest_asyncio.apply()
 from datetime import datetime
 from .aiwrapper import cleaned_completion_wrapper, content_classification, search_query
 from dataclasses import dataclass, field
-from typing import IO, ClassVar, List, Dict, Optional, Tuple
-from datafiles import datafile, formats
-from datafiles import Missing
-from pydoc import locate
+from typing import ClassVar, List, Dict, Optional, Tuple
+from snapclass import Missing, Stash, snapclass
+from snapclass.formatters import TypedTextFormatter
 import asyncio
 import json
 import os
@@ -23,6 +22,16 @@ if os.getenv("PLUNKYLIB_BASE_DIR") is None:
 else:
     PLUNKYLIB_BASE_DIR = os.getenv("PLUNKYLIB_BASE_DIR")
     PLUNKYLIB_BASE_DIR = PLUNKYLIB_BASE_DIR.rstrip("/")
+
+PLUNKYLIB_ROOT = Stash(PLUNKYLIB_BASE_DIR)
+PROMPTS = PLUNKYLIB_ROOT / "prompts"
+PROMPTVARS = PLUNKYLIB_ROOT / "promptvars"
+PARAMS = PLUNKYLIB_ROOT / "params"
+PETITIONS = PLUNKYLIB_ROOT / "petition"
+COMPLETIONS = PLUNKYLIB_ROOT / "completions"
+VECTOR_PARAMS = PLUNKYLIB_ROOT / "vectorsearchparams"
+VECTOR_SEARCHES = PLUNKYLIB_ROOT / "vectorsearch"
+NAMED_LISTS = PLUNKYLIB_ROOT / "namedlists"
 
 if os.getenv("PLUNKYLIB_LOGS_DIR") is None:
     PLUNKYLIB_LOGS_DIR = None   # no logging by default
@@ -43,80 +52,6 @@ class TEMPERATURE:
     MAX: ClassVar[float] = 1.0
 
 
-# this format class only works with strings
-class TxtFormat(formats.Formatter):
-    """Special formatter to use with strings and .txt datafiles for a convenient raw text format for easy document editing on disk"""
-    TYPEFORMAT = "{name}|{type}"
-    DIVIDER = "#-=-=-=-=-DO-NOT-EDIT-THIS-LINE-PLEASE-=-=-=-=-#"
-    @classmethod
-    def extensions(cls) -> List[str]:
-        return ['.txt']
-
-    @classmethod
-    def serialize(cls, data: Dict) -> str:
-        # support types:
-        _supported_types = [int, float, str, bool]
-        # Convert `data` to a string
-        output = ""
-        for k, v in data.items():
-            if type(v) in _supported_types:
-                output = output + cls.TYPEFORMAT.format(name=k, type=v.__class__.__name__) + "\n"
-                # add the divider then value
-                output = output + str(v) + "\n" + cls.DIVIDER + "\n"
-            else:
-                raise ValueError("Unsupported type: {}".format(type(v)))
-        return output
-
-    @classmethod
-    def deserialize(cls, file_object: IO) -> Dict:
-        # reverse the serialize method
-        output = {}
-        # use an UTF-8 encoding for the file
-        file_object = open(file_object.name, 'r', encoding='utf-8')
-        # read each line of the file_object
-        lines = file_object.readlines()
-        # loop through the range of lines
-        current_key = ''
-        current_value = ''
-        current_type = None
-        current_object = None
-        for i in range(len(lines)):
-            current_line = lines[i].strip('\n')
-            if current_line == cls.DIVIDER:
-                # if we have a current object and type, then we can add it to the output
-                if current_object is not None and current_type is not None:
-                    # apply the type to the current object and save in output
-                    output[current_key] = current_type(current_object)
-                else:
-                    # raise a misformat error
-                    raise ValueError("Misformatted file: {}".format(lines[i]))
-                # reset the current object and type
-                current_object = None
-                current_type = None
-                # reset the current key
-                current_key = ''
-            else:
-                # line is not the divider, so we need to see if we're starting a new object or finishing an old one
-                if current_key == '':
-                    # this line needs to be a key and type
-                    # get the key and type
-                    current_key, current_type = current_line.split("|")
-                    # convert the type's string representation to the python type
-                    current_type = locate(current_type.strip())
-                    current_key = current_key.strip()
-                    # move to the next line
-                    continue
-                else:
-                    # this line is part of the current object
-                    # if we're not starting a new object, then add the current line to the current object
-                    if current_object is None:
-                        current_object = current_line
-                    else:
-                        current_object = current_object + "\n" + current_line
-                    continue
-        return output
-formats.register('.txt', TxtFormat)
-
 ########################################################################################################################
 # Core datafile classes of Plunkylib
 # (1) Prompt, this is the prompt text we save to disk
@@ -130,18 +65,18 @@ formats.register('.txt', TxtFormat)
 # (6) NamedList, a list of named items, used for storing things like random lists you might want to expand inside a prompt
 
 
-@datafile(PLUNKYLIB_BASE_DIR + "/prompts/{self.name}.txt")
+@snapclass("{self.name}.txt", stash=PROMPTS, formatter=TypedTextFormatter)
 class Prompt:
     name: str
     text: str
 
-@datafile(PLUNKYLIB_BASE_DIR + "/promptvars/{self.name}.yml")
+@snapclass("{self.name}.yml", stash=PROMPTVARS)
 class PromptVars:
     name: str
     # need a dictionary
     vars: Dict[str, str]
 
-@datafile(PLUNKYLIB_BASE_DIR + "/prompts/{self.chatprompt_name}.yml")
+@snapclass("{self.chatprompt_name}.yml", stash=PROMPTS)
 class ChatPrompt:
     chatprompt_name: str
     messages: List[Dict[str, str]]
@@ -190,7 +125,7 @@ class ChatPrompt:
 
 
 
-@datafile(PLUNKYLIB_BASE_DIR + "/params/{self.name}.yml", defaults=True)
+@snapclass("{self.name}.yml", stash=PARAMS, defaults=True)
 class CompletionParams:
     name: str
     engine: str = "text-davinci-002"
@@ -204,7 +139,7 @@ class CompletionParams:
     presence_penalty: float = 0.0
     logprobs: Optional[int] = None
 
-@datafile(PLUNKYLIB_BASE_DIR + "/petition/{self.name}.yml")
+@snapclass("{self.name}.yml", stash=PETITIONS)
 class Petition:
     name: str
     params_name: str
@@ -221,18 +156,18 @@ class Petition:
         if (self.prompt_name is None or self.prompt_name == "") and self.chatprompt_name is None:
             self.prompt_name = self.name
         if self.chatprompt_name is not None:
-            self.chatprompt = ChatPrompt.objects.get(self.chatprompt_name)
+            self.chatprompt = ChatPrompt.snapshots.get(self.chatprompt_name)
             self.prompt = None
         else:
-            self.prompt = Prompt.objects.get(self.prompt_name)
+            self.prompt = Prompt.snapshots.get(self.prompt_name)
             self.chatprompt = None
-        self.params = CompletionParams.objects.get(self.params_name)
+        self.params = CompletionParams.snapshots.get(self.params_name)
         if self.promptvars_name is not None:
-            self.promptvars = PromptVars.objects.get(self.promptvars_name)
+            self.promptvars = PromptVars.snapshots.get(self.promptvars_name)
         else:
             self.promptvars = None
 
-@datafile(PLUNKYLIB_BASE_DIR + "/completions/{self.name}.yml")
+@snapclass("{self.name}.yml", stash=COMPLETIONS)
 class Completion:
     name: str
     text: str
@@ -247,11 +182,11 @@ class Completion:
 
     # post init to initialize the prompt and params
     def load_all(self):
-       self.petition = Petition.objects.get(self.petition_name) if self.petition_name is not Missing and self.petition_name is not None else None
-       self.parent = Completion.objects.get(self.parent_name) if self.parent_name is not Missing and self.parent_name is not None else None
+       self.petition = Petition.snapshots.get(self.petition_name) if self.petition_name is not Missing and self.petition_name is not None else None
+       self.parent = Completion.snapshots.get(self.parent_name) if self.parent_name is not Missing and self.parent_name is not None else None
 
 
-@datafile(PLUNKYLIB_BASE_DIR + "/vectorsearchparams/{self.name}.yml", defaults=True)
+@snapclass("{self.name}.yml", stash=VECTOR_PARAMS, defaults=True)
 class VectorSearchParams:
     name: str
     engine: str = "pinecone"
@@ -266,9 +201,9 @@ class VectorSearchParams:
 
     def load_all(self):
         if self.embedding is not None:
-            self.embedding_params = CompletionParams.objects.get(self.embedding)
+            self.embedding_params = CompletionParams.snapshots.get(self.embedding)
 
-@datafile(PLUNKYLIB_BASE_DIR + "/vectorsearch/{self.name}.yml")
+@snapclass("{self.name}.yml", stash=VECTOR_SEARCHES)
 class VectorSearch:
     name: str
     params_name: str
@@ -280,12 +215,12 @@ class VectorSearch:
         # default to the prompt of the same name
         if (self.prompt_name is None or self.prompt_name == ""):
             self.prompt_name = self.name
-        self.prompt = Prompt.objects.get(self.prompt_name)
-        self.params = VectorSearchParams.objects.get(self.params_name)
+        self.prompt = Prompt.snapshots.get(self.prompt_name)
+        self.params = VectorSearchParams.snapshots.get(self.params_name)
         self.params.load_all()
         
 
-@datafile(PLUNKYLIB_BASE_DIR + "/namedlists/{self.list_name}.yml")
+@snapclass("{self.list_name}.yml", stash=NAMED_LISTS)
 class NamedList:
     list_name: str
     items: List[str]
@@ -371,7 +306,7 @@ aformatter = AsyncFormatter()
 
 # accepts a petition name as a string and calls petition_completion2, returning only the completion text
 async def petition_name_completion(petition_name: str, additional: Optional[dict] = None) -> str:
-    petition = Petition.objects.get(petition_name)
+    petition = Petition.snapshots.get(petition_name)
     completion, prompt1 = await petition_completion2(petition, additional)
     return prompt1 + completion.text
 
@@ -391,7 +326,7 @@ def text_expander(additional: Optional[dict] = None) -> dict:
 
 
 async def prompt_name_expansion(prompt_name: str, additional: Optional[dict] = None) -> str:
-    prompt = Prompt.objects.get(prompt_name)
+    prompt = Prompt.snapshots.get(prompt_name)
     result = await aformatter.async_format(prompt.text, **text_expander(additional))
     return result
 
@@ -531,7 +466,7 @@ async def petition_completion2(petition: Petition, additional: Optional[dict] = 
     return completion, prompt_break
 
 async def vectorsearch_name_query(vsearch_name: str, additional: Optional[dict] = None) -> str:
-    vsearch = VectorSearch.objects.get(vsearch_name)
+    vsearch = VectorSearch.snapshots.get(vsearch_name)
     vsearch.load_all()
     return await vectorsearch_query(vsearch, additional)
 
