@@ -2,7 +2,6 @@ import os
 import pytest
 import shutil
 from plunkylib import Prompt, PromptVars, ChatPrompt, CompletionParams, Petition, PLUNKYLIB_BASE_DIR, PLUNKYLIB_LOGS_DIR
-from datafiles import settings as datafiles_settings
 
 @pytest.fixture(scope="function", autouse=True)
 def setup_and_cleanup():
@@ -49,23 +48,15 @@ def setup_and_cleanup():
             pass
 
 def test_file_creation_and_modification():
-    datafiles_settings.HIDDEN_TRACEBACK = False
-    datafiles_settings.WRITE_DELAY = 0.1
-
     plunkylib_dir = PLUNKYLIB_BASE_DIR
     plunkylib_dir = os.path.abspath(plunkylib_dir)
 
     # 1. Create instances of the classes with some initial values.
     prompt = Prompt(name="TestPrompt", text="This is the test prompt.")
-    #prompt.datafile.save()
     prompt_vars = PromptVars(name="TestPromptVars", vars={"var1": "value1", "var2": "value2"})
-    #prompt_vars.datafile.save()
     chat_prompt = ChatPrompt(chatprompt_name="TestChatPrompt", messages=[{"user": "Hello"}, {"assistant": "Hi there!"}])
-    #chat_prompt.datafile.save()
     completion_params = CompletionParams(name="TestCompletionParams")
-    #completion_params.datafile.save()
     petition = Petition(name="TestPetition", params_name="TestCompletionParams", prompt_name="TestPrompt")
-    #petition.datafile.save()
 
    
     # wait two seconds to be sure the files are created with different timestamps
@@ -82,18 +73,16 @@ def test_file_creation_and_modification():
 
 
 def file_yeah2():
-    prompt = Prompt.objects.get("TestPrompt")
+    prompt = Prompt.snapshots.get("TestPrompt")
     assert prompt.text == "This is the modified test prompt.", "Prompt text should be updated with the modified content."
     del prompt
 
 def test_file_edit():
-    datafiles_settings.HIDDEN_TRACEBACK = False
-
     plunkylib_dir = PLUNKYLIB_BASE_DIR
     plunkylib_dir = os.path.abspath(plunkylib_dir)
 
     prompt = Prompt(name="TestPrompt", text="This is the test prompt.")
-    prompt.datafile.save()
+    prompt.snapshot.save()
 
 
     file_contents = None
@@ -112,5 +101,5 @@ def test_file_edit():
         file_contents = file_contents.replace("This is the test prompt.", "This is the modified test prompt.")
         file.write(file_contents)
 
-    prompt = Prompt.objects.get("TestPrompt")
+    prompt = Prompt.snapshots.get("TestPrompt")
     assert prompt.text == "This is the modified test prompt.", "Prompt text should be updated with the modified content."
